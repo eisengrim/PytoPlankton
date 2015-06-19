@@ -45,7 +45,7 @@ class Plankton:
         calling Plankton.Settings.
      - debug = [ True | False ] : Increases output verbosity if True.
 
-    ---ARGUMENTS---
+    ---PARAMETERS---
     Additional keyword arguments are defined as follows:
      - loops_per_step : Number of loops to be completed in one FVCOM time
          step, or the linear time interpolation ratio between nc steps.
@@ -95,7 +95,9 @@ class Plankton:
          This list is by default empty.
 
     * Coordinates are given as decimal degrees East and North.
-    
+    * Times are printed out in compliance with ISO 8601 format standards,
+      <date>T<time>, with T as the delimiter: YYYY-MM-DDTHH:MM:SS.ss (UTC).
+
     """
 
     def __init__(self, filename, debug=False, **kwargs):
