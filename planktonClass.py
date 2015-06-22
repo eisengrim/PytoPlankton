@@ -139,6 +139,7 @@ class Plankton:
                                        self.Settings,
                                        debug=self._debug)
             self.Particle = _load_part(self._data,
+                                        self.Time,
                                         self.Settings,
                                         debug=self._debug)
 
