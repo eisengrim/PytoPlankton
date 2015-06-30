@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/env python
 # encoding: utf-8
 
 # library imports
@@ -24,7 +24,7 @@ def dn2dt(dn):
     return datetime.fromordinal(int(dn)) + timedelta(days=dn%1) \
             - timedelta(days = 366)
 
-    
+
 def jd2dt(jd):
     """
     Converts a Julian Time to a Python datetime.
@@ -46,7 +46,7 @@ def mjd2jd(mjd):
     """
     return mjd[:] + 2400000.5
 
-    
+
 def jd2isot(jd):
     """
     Converts a Julian Time to an ISO 8601 compliant timestamp.

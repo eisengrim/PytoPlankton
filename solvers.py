@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/env python
 # encoding: utf-8
 
 # library imports
@@ -32,9 +32,26 @@ B_RK = [1/6, 1/3, 1/3, 1/6]
 C_RK = [0, 0.5, 0.5, 1]
 
 
-def rungekutta(particle, grid, time):
+def solver(particle, grid, time, settings):
     """
-    Exeecutes an RK4 numerical scheme. Integrates all particle positions using
+    Calls the numerical solver to be used for moving the Lagrangian particle(s).
+    """
+    if settings['solver']=='rk4':
+        _rungekutta4(particle, grid, time, settings)
+    elif settings['solver']=='fwd_euler':
+        _forward_euler(particle, grid, time, settings)
+
+
+def _rungekutta(particle, grid, time, settings):
+    """
+    Executes an RK4 numerical scheme. Integrates all particle positions using
     the velocity fields given from the grid.
+    """
+    pass
+
+def _forward_euler(particle, lag, time, settings):
+    """
+    Executes a Forward Euler method, integrating all particle positions using the
+    fields given from the grid.
     """
     pass

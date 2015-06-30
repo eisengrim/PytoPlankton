@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/env python
 # encoding: utf-8
 
 # library imports
@@ -21,10 +21,10 @@ import seaborn as sns
 import cPickle as cpk
 import pickle as pkl
 import gc
+import pyproj
 
 # local imports
-from setupPlankton import *
-
+from planktonIO import *
 
 class Plankton:
     """
@@ -113,7 +113,7 @@ class Plankton:
             print 'loading settings...'
         params = kwargs
         self.Settings = _load_settings(params)
-        
+
         # load netcdf file (add pickle and opendap functionality?)
         if not filename.endswith('.nc'):
             sys.exit('...file format is not supported.')
