@@ -39,6 +39,12 @@ def mjd2dn(mjd):
     """
     return mjd[:] + 678942.0
 
+def dn2mjd(dn):
+    """
+    Converts a Matlab datenum to Modified Julian Time.
+    """
+    return dn[:] - 678942.0
+    
 
 def mjd2jd(mjd):
     """
@@ -53,3 +59,11 @@ def jd2isot(jd):
     """
     t = Time(jd, scale='utc', format='jd')
     return t.isot
+
+
+def flattime(varin):
+    """
+    Flattens the (MATLAB) variable in time, as it is scattered in xy.
+    """
+    
+    return varin.reshape(-1, varin.shape[2]).T
