@@ -126,3 +126,23 @@ class Plankton:
 
         # add plot and functions here from local import?
         # special methods like __del__, __new__, __add__ here?
+
+
+    def track(self):
+        """
+        Initializes the particle tracker. Calls the solver and interpolation
+        schemes; the output is also saved to a netCDF file.
+        """
+
+        start = self.Time.startstep
+        total = self.Time.totalsteps
+        stop = self.Time.startstep + self.Time.totalsteps
+        lps = self.Time.internalstep
+        ops = self.Time.outputstep
+
+        # loop through the time steps
+        if self.Settings.grid_file.endswith('.nc'):
+            for inputtime in np.linspace(start, stop, num=total):
+                for interptime in np.arange(lps):
+                    
+

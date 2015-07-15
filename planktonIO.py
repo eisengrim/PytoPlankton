@@ -40,7 +40,8 @@ class _load_settings:
 
         self.locs_file = locs_file
         self.grid_file = grid_file
-                    
+        self.finish = start + total
+
 
 class _load_fvcom_grid:
     """
@@ -351,6 +352,8 @@ class _load_part:
     Loads the Lagrangian Particle subclass.
 
     --VARIABLES--
+    nparts : number of particles
+    locs : initial locations
     """
     def __init__(self, grid, time, settings, debug=False):
         if debug:
