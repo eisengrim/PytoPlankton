@@ -11,28 +11,29 @@ import numpy as np
 import netCDF4 as nc
 import scipy.io as sio
 import matplotlib.tri as Tri
-from astropy import Time
+import time
 import pyproj
+from astropy.time import Time
 
 # local imports
 from temporal_utilities import *
 from spatial_utilities import *
 
-class _load_settings:
+class load_settings:
     """
     Loads the settings for the Plankton object, and stores it in a subclass.
     It is necessary to change these parameters before running the Lagrangian
     tracker code.
     """
-    def __init__(self, grid_file, locs_file, kwargs):
-        params_default = {lps : 60,
-                          ops : 60,
-                          start : 10,
-                          total : 30,
-                          solver : 'rk4',
-                          interp : 'linear',
-                          lon : [],
-                          lat : []}
+    def __init__(self, grid_file, locs_file, out_file, kwargs):
+        params_default = {'lps' : 60,
+                          'ops' : 60,
+                          'start' : 10,
+                          'total' : 30,
+                          'solver' : 'rk4',
+                          'interp' : 'linear',
+                          'lon' : [],
+                          'lat' : []}
 
         # update settings attributes
         for (param, default) in params_default.iteritems():
@@ -40,10 +41,11 @@ class _load_settings:
 
         self.locs_file = locs_file
         self.grid_file = grid_file
-        self.finish = start + total
+        self.out_path = out_file
+        self.finish = self.start + self.total
 
 
-class _load_fvcom_grid:
+class load_fvcom_grid:
     """
     Loads the grid data for the subclass Grid. Calculates information about
     the grid needed to increase particle tracking speed. Data is from FVCOM.
@@ -61,8 +63,8 @@ class _load_fvcom_grid:
     hele : bathymetric heights at elements (m); (ntime, nnode)
     siglay : sigma layers; (nlevel, nnode)
     siglev : sigma levels; (nlevel+1, nnode)
-    nbn : nearest bounding nodes, surrounding indices; (3, nnodes) [nv]
-    nbe : nearest bounding elements, surrounding indices; (3, nele)
+    trinodes : nearest bounding tri nodes, surrounding indices; (3, nele) [nv]
+    triele : nearest tri elements, surrounding indices; (3, nele) [nbe]
     nnode : number of nodes, integer
     nele : number of elements, integer
     nlevel : number of vertical elements, integer
@@ -71,7 +73,6 @@ class _load_fvcom_grid:
     nsiglev : siglev dimension, integer
     zlay : depth of each node at each sigma layer (m)
     zlev : depth of each node at each sigma level (m)
-    a1u, a2u, awx, awy, aw0 : grid parameters
 
     flag isonb set if node / element is on a boundary:
         n_isonb(i) = 0 : node in the interior computational domain
@@ -87,7 +88,8 @@ class _load_fvcom_grid:
         if debug:
             print 'retrieving data from ' + gridpath + '...'
         if not osp.exists(gridpath):
-            sys.exit('...the file {} was not found.'.format(gridpath))
+            print '...the file {} was not found.'.format(gridpath)
+            sys.exit()
 
         try:
             data = sio.netcdf.netcdf_file(gridpath, 'r', mmap=True)
@@ -99,8 +101,15 @@ class _load_fvcom_grid:
 
         # load grid variables from raw data
         # add __slots__?
-        gridvars = ['x', 'y', 'xc', 'yc', 'h', 'a1u', 'a2u', 'awx', 'awy', \
-                    'aw0', 'siglev', 'siglay']
+        datavar = data.variables.keys()
+        # determine if 3d
+        if 'h' in datavar:
+            self.threeD = True
+        
+        gridvars = ['x', 'y', 'xc', 'yc', 'lon', 'lat', 'lonc', 'latc'] 
+        if self.threeD:
+            gridvars = gridvars + ['h', 'siglev', 'siglay']
+        
         for key in gridvars:
             try:
                 setattr(self, key, data.variables[key].data)
@@ -109,44 +118,46 @@ class _load_fvcom_grid:
                 setattr(self, key, data.variables[key])
 
         # special treatment for triele and trinodes
-        datavar = data.variables.keys()
         if 'trinodes' in datavar:
             try:
-                setattr(self, 'nbn', data.variables['trinodes'].data)
+                setattr(self, 'trinodes', data.variables['trinodes'].data)
             except AttributeError:
-                setattr(self, 'nbn', data.variables['trinodes'])
+                setattr(self, 'trinodes', data.variables['trinodes'])
         else:
             try:
-                self.nbn = np.transpose(data.variables['nv'].data) - 1
+                self.trinodes = np.transpose(data.variables['nv'].data) - 1
             except AttributeError:
-                self.nbn = np.transpose(data.variables['nv'].data) - 1
+                self.trinodes = np.transpose(data.variables['nv'].data) - 1
         if 'triele' in datavar:
             try:
-                setattr(self, 'nbe', data.variables['triele'].data)
+                setattr(self, 'triele', data.variables['triele'].data)
             except AttributeError:
-                setattr(self, 'nbe', data.variables['triele'])
+                setattr(self, 'triele', data.variables['triele'])
         else:
             try:
-                self.nbe = np.transpose(data.variables['nbe'].data) - 1
+                self.triele = np.transpose(data.variables['nbe'].data) - 1
             except AttributeError:
-                self.nbe = np.transpose(data.variables['nbe'].data) - 1
+                self.triele = np.transpose(data.variables['nbe'].data) - 1
 
         # approximate bathymetry at the elements
-        self.hele = (self.h[self.nbn[0,:]-1] + self.h[self.nbn[1,:]-1] \
-                     + self.h[self.nbn[2,:]-1]) / 3
+        if self.threeD:
+            self.hele = (self.h[self.trinodes[0,:]-1] + \
+                         self.h[self.trinodes[1,:]-1] \
+                         + self.h[self.trinodes[2,:]-1]) / 3
 
         # load information relating to sigma layers and # of nodes/elements
-        if debug:
-            print '\tloading layers...'
-            
-        lsig, nodes = self.siglev.shape
-        self.zlay = siglay[0:lsig-1, 0:1]
-        self.zlev = siglev[0:lsig, 0:1]
-        self.nlevel = self.siglay.shape[0]
+        if self.threeD:                
+            if debug:
+                print '\tloading layers...'
+
+            lsig, nodes = self.siglev.shape
+            self.zlay = self.siglay[0:lsig-1, 0:1]
+            self.zlev = self.siglev[0:lsig, 0:1]
+            self.nlevel = self.siglay.shape[0]
+            self.nsiglay = len(self.zlay)
+            self.nsiglev = len(self.zlev)
         self.nele = self.lonc.shape[0]
         self.nnode = self.lon.shape[0]
-        self.nsiglay = len(self.zlay)
-        self.nsiglev = len(self.zlev)
 
         # add to code, add to documentation
         # load rest of grid variables here
@@ -182,12 +193,14 @@ class _load_fvcom_grid:
         except AttributeError:
             # exception for nc.Dataset
             self.mjd = data.variables['time']
+
+        self.gridtype = 'fvcom'
         
         if debug:
             print '\t...passed'
 
 
-class _load_mat_grid:
+class load_scatter_grid:
     """
     Loads the grid data from MATLAB scatter data.
 
@@ -220,7 +233,8 @@ class _load_mat_grid:
         if debug:
             print 'retrieving data from ' + gridpath + '...'
         if not osp.exists(gridpath):
-            sys.exit('...the file {} was not found.'.format(gridpath))
+            print '...the file {} was not found.'.format(gridpath)
+            sys.exit()
         # enclose in try statement?
         data = sio.loadmat(gridpath)
 
@@ -233,7 +247,7 @@ class _load_mat_grid:
                     'vuss', 'vwnd']
 
         for key in gridvars:
-            setattr(self, data[key])
+            setattr(self, key, data[key])
         
         # define the lcc projection
         if debug:
@@ -246,8 +260,8 @@ class _load_mat_grid:
 
         self._xavg = (self._xmax + self._xmin) * 0.5
         self._yavg = (self._ymax + self._ymin) * 0.5
-        self._ylower = (self._ymax - self._ymin) * 0.25 + self.ymin
-        self._yupper = (self._ymax - self._ymin) * 0.75 + self.ymin
+        self._ylower = (self._ymax - self._ymin) * 0.25 + self._ymin
+        self._yupper = (self._ymax - self._ymin) * 0.75 + self._ymin
 
         self._projstr = 'lcc +lon_0=' + str(self._xavg) + ' +lat_0=' \
                        + str(self._yavg) + ' +lat_1=' + str(self._ylower) \
@@ -259,20 +273,20 @@ class _load_mat_grid:
         self.x, self.y = self.proj(self.lon, self.lat)
         self.mx, self.my = self.proj(self.mlon, self.mlat)
 
+        # save the mask
+        self.mask = np.isnan(self.uttc)[:,:,0]
+
         if debug:        
             print '\tflattening data fields...'
 
         # flatten the data as it is basically scattered in xy
-        # self.uwnd = flattime(self.uwnd)
-        # self.vwnd = flattime(self.vwnd)
-        # self.uuss = flattime(self.uuss)
-        # self.vuss = flattime(self.vuss)
+        # self.uwndf = flattime(self.uwnd)
+        # self.vwndf = flattime(self.vwnd)
+        # self.uussf = flattime(self.uuss)
+        # self.vussf = flattime(self.vuss)
             
-        self.uttc = flattime(self.uttc)
-        self.vttc = flattime(self.vttc)
-
-        # save the mask
-        self.mask = np.isnan(self.uttc)[:,:,0]
+        self.uttcf = flattime(self.uttc)
+        self.vttcf = flattime(self.vttc)
 
         self.ustep1 = self.uttcf[0,:]
         self.vstep1 = self.vttcf[0,:]
@@ -280,12 +294,14 @@ class _load_mat_grid:
         self.vstep2 = self.vttcf[0,:]
 
         self.mjd = dn2mjd(self.time)
+        self.gridtype = 'scatter'
+        self.threeD = False
         
         if debug:
             print '\t...passed.'
 
         
-class _load_time_var:
+class load_time_var:
     """
     Loads the time variables subclass Time.
 
@@ -311,8 +327,9 @@ class _load_time_var:
         # Ensures internal step and output step are scalar multiples
         self.internalstep = np.float64(settings.lps)
         self.outputstep = np.float64(settings.ops)
-        if not np.mod(internalstep, outputstep) == 0:
-            sys.exit('output and internal steps must be evenly divisible.')
+        if not np.mod(self.internalstep, self.outputstep) == 0:
+            print 'output and internal steps must be evenly divisible.'
+            sys.exit()
 
         self.mjd = grid.mjd
         
@@ -332,7 +349,9 @@ class _load_time_var:
             print '\tcalculating stepping...'
             
         # calculate stepping of input data, internal and output stepping
-        self.instp = np.round((self.jd[1]-self.jd[0]).sec)
+        self.instp = np.round((Time(self.jd[1], format='jd') \
+                               -Time(self.jd[0], format='jd')).sec)
+
         self.dti = self.instp/self.internalstep
         self.dtout = self.instp/self.outputstep
 
@@ -347,7 +366,7 @@ class _load_time_var:
             print '\t...passed'
 
 
-class _load_part:
+class load_part:
     """
     Loads the Lagrangian Particle subclass.
 
@@ -355,7 +374,7 @@ class _load_part:
     nparts : number of particles
     locs : initial locations
     """
-    def __init__(self, grid, time, settings, debug=False):
+    def __init__(self, grid, ptime, settings, debug=False):
         if debug:
             print '\tloading particle variables...'
 
@@ -364,44 +383,120 @@ class _load_part:
         if debug:
             print '\tretrieving initial positions from ' + locs_file + '...'
         if not osp.exists(locs_file):
-            sys.exit('cannot find location file {}.'.format(locs_file))
+            print 'cannot find location file {}.'.format(locs_file)
+            sys.exit()
 
         # set up initial positions, ignore missing data
         locs = np.genfromtxt(locs_file, comments='#', autostrip=True)
         
         if not len(settings.lon) == len(settings.lat):
-            sys.exit('number of longitudes and latitudes given must match.')
+            print 'number of longitudes and latitudes given must match.'
+            sys.exit()
 
         # load lon/lat and elem given from settings
         if settings.lon and settings.lat:
+            if debug:
+                print '\tcollecting additional coordinates...'
+                
             lon = np.asarray(settings.lon)
             lat = np.asarray(settings.lat)
             locs_opt = np.vstack((lon,lat)).T
-            self.locs = np.vstack((locs,locs_opt))        
+            self.init_locs = np.vstack((locs,locs_opt))        
 
+        else:
+            self.init_locs = locs
+            
         # initialize arrays for lagrangian particle(s)
-        self.locs = self.locs[~np.isnan(self.locs).any(axis=1)]
-        self.nparts = self.locs.shape[0]
+        self.init_locs = self.init_locs[~np.isnan(self.init_locs).any(axis=1)]
+        self.nparts = self.init_locs.shape[0]
 
-        n = self.nparts
-        self.x = np.zeros(n, time.nouts)
-        self.y = np.zeros(n, time.nouts)
+        npts = self.nparts
+        nouts = ptime.nouts
+        # overwrite protection
+        out_path = settings.out_path
+        if osp.isfile(out_path):
+            choice = raw_input('the file {} already exists. overwrite ' \
+                               + '(y or n)? '.format(out_path))
+            if choice in ['yes', 'y', 'Y']:
+                try:
+                    os.remove(out_path)
+                except OSError:
+                    print 'could not overwrite at this time.'
+                    sys.exit()
+            elif choice in ['no', 'n', 'N']:
+                print 'aborting...'
+                sys.exit()
+                
+        # initialize netCDF object for writing
+        else:
+            try:
+                if debug:
+                    print '\tcreating nc file...'
+                ncid = nc.Dataset(out_path, 'w', format='NETCDF3_CLASSIC')
+            except IOError:
+                print 'could not write to {} at this time.'.format(out_path)
+                sys.exit()
+                
+            # create parameters
+            if debug:
+                print '\tsetting up dimensions and variables...'
+            ncid.createDimension('time', nouts)
+            ncid.createDimension('npts', npts)
+            ncid.createVariable('x', 'd', ('time', 'npts'))
+            ncid.createVariable('y', 'd', ('time', 'npts'))
+            ncid.createVariable('lon', 'd', ('time', 'npts'))
+            ncid.createVariable('lat', 'd', ('time', 'npts'))
+            ncid.createVariable('u', 'd', ('time', 'npts'))
+            ncid.createVariable('v', 'd', ('time', 'npts'))
+            ncid.createVariable('time', 'd', ('time'))
 
-        
-    # initialize arrays for lagrangian particle, set particle positions
-    # lag.nparts = n
-    # lag.time = np.zeros(time.nouts)
-    # lag.x = np.zeros(n, # number times out?
-    # lag.y
-    # lag.z
-    # lag.u
-    # lag.w
-    # lag.v
-    # lag.sig_pos
-    # lag.host
-    # lag.indomain
-    # lag.h
-    # lag.free_sfc
+            ncid.__setattr__('gridtype', grid.gridtype)
+            ncid.__setattr__('history', 'created on ' + \
+                             time.ctime(time.time()) + 'by PytoPlankton')
 
+            # last step information
+            self.lon0 = self.init_locs[:,0]
+            self.lat0 = self.init_locs[:,1]
+            # self.x0 = self.
+            # self.y0 = self.
+
+            # if self.threeD:
+            #     self.h0 = 
+            #     self.z0 =
+            #     self.w0 =
+                
+            # create instances for immediate data (current step locations)
+            self.xi = np.empty((npts,))
+            self.yi = np.empty((npts,))
+            self.loni = np.empty((npts,))
+            self.lati = np.empty((npts,))
+            self.ui = np.empty((npts,))
+            self.vi = np.empty((npts,))
+
+            if grid.threeD:
+                self.hi = np.empty((npts,))
+                self.zi = np.empty((npts,))
+                self.wi = np.empty((npts,))
+
+                ncid.createVariable('w', 'd', ('time','npts'))
+                ncid.createVariable('z', 'd', ('time','npts'))
+                ncid.createVariable('h', 'd', ('time','npts'))
+
+            self.loop = 0
+
+            ncid.variables['lon'][0,:] = self.init_locs[:,0]
+            ncid.variables['lat'][0,:] = self.init_locs[:,1]
+            # ncid.variables['x'][0,:] = self.x0
+            # ncid.variables['y'][0,:] = self.y0
+            # ncid.variables['u'][0,:]
+            # ncid.variables['v'][0,:]
+
+            # if self.threeD:
+            #    ncid.variables['w'][0,:] =
+            #    ncid.variables['z'][0,:] =
+            #    ncid.variables['h'][0,:] =
+                
+            ncid.close()
+            
     # difference between position / velocity and their absolutes?
 

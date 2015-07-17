@@ -36,19 +36,18 @@ class Plankton:
               /-Grid : Holds all grid data.
              |--Settings : Holds all specified settings.
     Plankton_|--Time : Holds time-related data and settings for particles.
-             |--Particle : Holds various data for particles.
-              \-Write : Save options.
+              \-Particle : Holds various data for particles.
 
     ---INPUT---
-    - gridpath = Path to the grid file that holds the grid data. Either a
+    - gridpath : Path to the grid file that holds the grid data. Either a
         netCDF4 file from FVCOM, a pickle file or a MATLAB file.
-    - locspath = Path to the .dat file that holds all of the initial
-        positions of the particles in lonlat or elem format. If in lonlat,
+    - locspath : Path to the .dat file that holds all of the initial
+        positions of the particles in lon lat format. In the lon lat file,
         two columns of lon and lat are separated by a single space each and 
-        each particle has its own row. If in element format, elements are
-        given in a single column with each row dedicated to a particle.
-        Note that this may be augmented by passing the parameters lonlat 
-        or elem.
+        each particle has its own row. Note that passing lon / lat as
+        parameters adds these to the initial positions as well as the file.
+    - outpath : Path to the file that the user wishes to write the data to.
+        The file must be a .nc file.
         
     ** Optional Parameters:
     - lps : Loops per step. Number of loops to be completed in one FVCOM time
@@ -76,7 +75,7 @@ class Plankton:
 
     """
 
-    def __init__(self, gridpath, locspath, debug=False, **kwargs):
+    def __init__(self, gridpath, locspath, outpath, debug=False, **kwargs):
         '''
         Initializes Plankton class.
         '''
@@ -88,45 +87,49 @@ class Plankton:
         if debug:
             print 'loading settings...'
         params = kwargs
-        self.Settings = _load_settings(gridpath, locspath, params)
+        self.Settings = load_settings(gridpath, locspath, outpath, params)
 
         # load file (add opendap functionality?)
+        # possibility of importing data from existing pyseidon grid?
         if debug:
             print 'looking for grid data...'
 
         # load grid. note this may be a large file, no need to move to input
         if gridpath.endswith('.nc'):
-            self.Grid = _load_fvcom_grid(gridpath,
+            self.Grid = load_fvcom_grid(gridpath,
                                          self.Settings,
                                          debug=self._debug)
 
         elif gridpath.endswith('.mat'):
-            self.Grid = _load_mat_grid(gridpath,
+            self.Grid = load_scatter_grid(gridpath,
                                        self.Settings,
                                        debug=self._debug)
 
         else:
-            sys.exit('...file format for grid data is not supported.')
+            print '...file format for grid data is not supported.'
+            sys.exit()
             
         # load data into structures
         if debug:
             print 'initializing plankton object...'
         try:           
             # load time data and initialize particle
-            self.Time = _load_time_var(self.Grid,
+            self.Time = load_time_var(self.Grid,
                                        self.Settings,
                                        debug=self._debug)
-            self.Particle = _load_part(self.Grid,
+            self.Particle = load_part(self.Grid,
                                         self.Time,
                                         self.Settings,
                                         debug=self._debug)
 
         except MemoryError:
-            sys.exit('...data too large for machine memory.')
+            print '...data too large for machine memory.'
+            sys.exit()
 
         # add plot and functions here from local import?
         # special methods like __del__, __new__, __add__ here?
 
+        
 
     def track(self):
         """
@@ -144,5 +147,4 @@ class Plankton:
         if self.Settings.grid_file.endswith('.nc'):
             for inputtime in np.linspace(start, stop, num=total):
                 for interptime in np.arange(lps):
-                    
-
+                    pass
