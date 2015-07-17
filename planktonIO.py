@@ -86,9 +86,9 @@ class load_fvcom_grid:
     def __init__(self, gridpath, settings, debug=False):
         # look for directory and ncfile
         if debug:
-            print 'retrieving data from ' + gridpath + '...'
+            print 'retrieving data from ' + osp.basename(gridpath) + '...'
         if not osp.exists(gridpath):
-            print '...the file {} was not found.'.format(gridpath)
+            print '...the file {} was not found.'
             sys.exit()
 
         try:
@@ -97,7 +97,7 @@ class load_fvcom_grid:
             data = nc.Dataset(gridpath, 'r', format='NETCDF4_CLASSIC')
 
         if debug:
-            print '\tloading grid variables...'
+            print 'loading grid variables...'
 
         # load grid variables from raw data
         # add __slots__?
@@ -109,7 +109,9 @@ class load_fvcom_grid:
         gridvars = ['x', 'y', 'xc', 'yc', 'lon', 'lat', 'lonc', 'latc'] 
         if self.threeD:
             gridvars = gridvars + ['h', 'siglev', 'siglay']
-        
+
+        if debug:
+            print '\tsettings attributes...'
         for key in gridvars:
             try:
                 setattr(self, key, data.variables[key].data)
@@ -141,6 +143,8 @@ class load_fvcom_grid:
 
         # approximate bathymetry at the elements
         if self.threeD:
+            if debug:
+                print '\tapproximating bathymetry...'
             self.hele = (self.h[self.trinodes[0,:]-1] + \
                          self.h[self.trinodes[1,:]-1] \
                          + self.h[self.trinodes[2,:]-1]) / 3
@@ -177,13 +181,14 @@ class load_fvcom_grid:
         # calculate global minimums and maximums
         if debug:
             print '\tcalculating global minimums and maximums...'
-            
         self.xmin = np.min(self.x)
         self.xmax = np.max(self.x)
         self.ymax = np.max(self.y)
         self.ymin = np.min(self.y)
 
         # shift grid to upper right Cartesian
+        if debug:
+            print '\tshifting grid to upper right cartesian...'
         self.x = self.x - self.xmin
         self.y = self.y - self.ymin
 
@@ -197,7 +202,7 @@ class load_fvcom_grid:
         self.gridtype = 'fvcom'
         
         if debug:
-            print '\t...passed'
+            print '...passed'
 
 
 class load_scatter_grid:
@@ -231,21 +236,23 @@ class load_scatter_grid:
     def __init__(self, gridpath, settings, debug=False):
         # look for directory and matlab file
         if debug:
-            print 'retrieving data from ' + gridpath + '...'
+            print 'retrieving data from ' + osp.basename(gridpath) + '...'
         if not osp.exists(gridpath):
-            print '...the file {} was not found.'.format(gridpath)
+            print '...the grid file was not found.'
             sys.exit()
         # enclose in try statement?
         data = sio.loadmat(gridpath)
 
         if debug:
-            print '\tloading grid variables...'
+            print 'loading grid variables...'
             
         # load grid variables
         # add __slots__?
         gridvars = ['lon', 'lat', 'time', 'uttc', 'uuss', 'uwnd', 'vttc', \
                     'vuss', 'vwnd']
 
+        if debug:
+            print '\tsetting attributes...'
         for key in gridvars:
             setattr(self, key, data[key])
         
@@ -298,7 +305,7 @@ class load_scatter_grid:
         self.threeD = False
         
         if debug:
-            print '\t...passed.'
+            print '...passed.'
 
         
 class load_time_var:
@@ -322,7 +329,7 @@ class load_time_var:
     """
     def __init__(self, grid, settings, debug=False):
         if debug:
-            print '\tloading time variables...'
+            print 'loading time variables...'
 
         # Ensures internal step and output step are scalar multiples
         self.internalstep = np.float64(settings.lps)
@@ -337,7 +344,7 @@ class load_time_var:
         self.startstep = np.float64(settings.start)
 
         if debug:
-            print '\tconverting time measurements...'
+            print '\tconverting measurements...'
         self.mdn = mjd2dn(self.mjd)
         self.ntime = self.mjd.shape[0]
 
@@ -363,7 +370,7 @@ class load_time_var:
         self.nouts = (self.totalsteps * self.outputstep) + 1
 
         if debug:
-            print '\t...passed'
+            print '...passed'
 
 
 class load_part:
@@ -376,14 +383,15 @@ class load_part:
     """
     def __init__(self, grid, ptime, settings, debug=False):
         if debug:
-            print '\tloading particle variables...'
+            print 'loading particle variables...'
 
         locs_file = settings.locs_file
 
         if debug:
-            print '\tretrieving initial positions from ' + locs_file + '...'
+            print '\tretrieving initial positions from ' \
+                + osp.basename(locs_file) + '...'
         if not osp.exists(locs_file):
-            print 'cannot find location file {}.'.format(locs_file)
+            print '...cannot find location file.'
             sys.exit()
 
         # set up initial positions, ignore missing data
@@ -412,11 +420,13 @@ class load_part:
 
         npts = self.nparts
         nouts = ptime.nouts
-        # overwrite protection
         out_path = settings.out_path
+        # overwrite protection        
+        if debug:
+            print '\tfinding output file ' + osp.basename(out_path) + '...'
         if osp.isfile(out_path):
-            choice = raw_input('the file {} already exists. overwrite ' \
-                               + '(y or n)? '.format(out_path))
+            choice = raw_input('\toutput file already exists. overwrite ' \
+                               '(y/n)? ')
             if choice in ['yes', 'y', 'Y']:
                 try:
                     os.remove(out_path)
@@ -428,75 +438,77 @@ class load_part:
                 sys.exit()
                 
         # initialize netCDF object for writing
-        else:
-            try:
-                if debug:
-                    print '\tcreating nc file...'
-                ncid = nc.Dataset(out_path, 'w', format='NETCDF3_CLASSIC')
-            except IOError:
-                print 'could not write to {} at this time.'.format(out_path)
-                sys.exit()
-                
-            # create parameters
+        try:
             if debug:
-                print '\tsetting up dimensions and variables...'
-            ncid.createDimension('time', nouts)
-            ncid.createDimension('npts', npts)
-            ncid.createVariable('x', 'd', ('time', 'npts'))
-            ncid.createVariable('y', 'd', ('time', 'npts'))
-            ncid.createVariable('lon', 'd', ('time', 'npts'))
-            ncid.createVariable('lat', 'd', ('time', 'npts'))
-            ncid.createVariable('u', 'd', ('time', 'npts'))
-            ncid.createVariable('v', 'd', ('time', 'npts'))
-            ncid.createVariable('time', 'd', ('time'))
+                print '\tcreating nc file...'
+            ncid = nc.Dataset(out_path, 'w', format='NETCDF3_CLASSIC')
+        except IOError:
+            print 'could not write to output file at this time.'
+            sys.exit()
 
-            ncid.__setattr__('gridtype', grid.gridtype)
-            ncid.__setattr__('history', 'created on ' + \
-                             time.ctime(time.time()) + 'by PytoPlankton')
+        # create parameters
+        if debug:
+            print '\tsetting up dimensions and variables...'
+        ncid.createDimension('time', nouts)
+        ncid.createDimension('npts', npts)
+        ncid.createVariable('x', 'd', ('time', 'npts'))
+        ncid.createVariable('y', 'd', ('time', 'npts'))
+        ncid.createVariable('lon', 'd', ('time', 'npts'))
+        ncid.createVariable('lat', 'd', ('time', 'npts'))
+        ncid.createVariable('u', 'd', ('time', 'npts'))
+        ncid.createVariable('v', 'd', ('time', 'npts'))
+        ncid.createVariable('time', 'd', ('time'))
 
-            # last step information
-            self.lon0 = self.init_locs[:,0]
-            self.lat0 = self.init_locs[:,1]
-            # self.x0 = self.
-            # self.y0 = self.
+        ncid.__setattr__('gridtype', grid.gridtype)
+        ncid.__setattr__('history', 'created on ' + \
+                         time.ctime(time.time()) + 'by PytoPlankton')
 
-            # if self.threeD:
-            #     self.h0 = 
-            #     self.z0 =
-            #     self.w0 =
-                
-            # create instances for immediate data (current step locations)
-            self.xi = np.empty((npts,))
-            self.yi = np.empty((npts,))
-            self.loni = np.empty((npts,))
-            self.lati = np.empty((npts,))
-            self.ui = np.empty((npts,))
-            self.vi = np.empty((npts,))
+        if debug:
+            print '\tcollecting initial step information...'
+        # last step information
+        self.lon0 = self.init_locs[:,0]
+        self.lat0 = self.init_locs[:,1]
+        # self.x0 = self.
+        # self.y0 = self.
 
-            if grid.threeD:
-                self.hi = np.empty((npts,))
-                self.zi = np.empty((npts,))
-                self.wi = np.empty((npts,))
+        # if self.threeD:
+        #     self.h0 = 
+        #     self.z0 =
+        #     self.w0 =
 
-                ncid.createVariable('w', 'd', ('time','npts'))
-                ncid.createVariable('z', 'd', ('time','npts'))
-                ncid.createVariable('h', 'd', ('time','npts'))
+        # create instances for immediate data (current step locations)
+        self.xi = np.empty((npts,))
+        self.yi = np.empty((npts,))
+        self.loni = np.empty((npts,))
+        self.lati = np.empty((npts,))
+        self.ui = np.empty((npts,))
+        self.vi = np.empty((npts,))
 
-            self.loop = 0
+        if grid.threeD:
+            self.hi = np.empty((npts,))
+            self.zi = np.empty((npts,))
+            self.wi = np.empty((npts,))
 
-            ncid.variables['lon'][0,:] = self.init_locs[:,0]
-            ncid.variables['lat'][0,:] = self.init_locs[:,1]
-            # ncid.variables['x'][0,:] = self.x0
-            # ncid.variables['y'][0,:] = self.y0
-            # ncid.variables['u'][0,:]
-            # ncid.variables['v'][0,:]
+            ncid.createVariable('w', 'd', ('time','npts'))
+            ncid.createVariable('z', 'd', ('time','npts'))
+            ncid.createVariable('h', 'd', ('time','npts'))
 
-            # if self.threeD:
-            #    ncid.variables['w'][0,:] =
-            #    ncid.variables['z'][0,:] =
-            #    ncid.variables['h'][0,:] =
-                
-            ncid.close()
-            
-    # difference between position / velocity and their absolutes?
+        self.loop = 0
 
+        ncid.variables['lon'][0,:] = self.init_locs[:,0]
+        ncid.variables['lat'][0,:] = self.init_locs[:,1]
+        # ncid.variables['x'][0,:] = self.x0
+        # ncid.variables['y'][0,:] = self.y0
+        # ncid.variables['u'][0,:]
+        # ncid.variables['v'][0,:]
+
+        # if self.threeD:
+        #    ncid.variables['w'][0,:] =
+        #    ncid.variables['z'][0,:] =
+        #    ncid.variables['h'][0,:] =
+
+        ncid.close()
+
+        # difference between position / velocity and their absolutes?
+        if debug:
+            print '...passed'

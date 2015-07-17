@@ -81,7 +81,7 @@ class Plankton:
         '''
         self._debug = debug
         if debug:
-            print '-debug mode turned on-'
+            print '\n-debug mode turned on-'
 
         # declares settings to be used...
         if debug:
