@@ -22,10 +22,10 @@ import seaborn as sns
 from temporal_utilities import *
 from spatial_utilities import *
 
-MSTAGE = 4
-A_RK = [0, 0.5, 0.5, 1]
-B_RK = [1/6, 1/3, 1/3, 1/6]
-C_RK = [0, 0.5, 0.5, 1]
+M_STAGE = 4
+A = [0, 0.5, 0.5, 1]
+B = [1/6, 1/3, 1/3, 1/6]
+C = [0, 0.5, 0.5, 1]
 
 
 def solver(particle, grid, time, settings):
@@ -38,7 +38,8 @@ def solver(particle, grid, time, settings):
     elif settings['solver'] == 'fwd_euler':
         _forward_euler(particle, grid, time, settings)
     else:
-        sys.exit('{} is not a valid solver'.format(settings['solver'])
+        print '{} is not a valid solver'.format(settings['solver']
+        sys.exit()
 
 
 def _rungekutta(particle, grid, time, settings):
@@ -50,9 +51,9 @@ def _rungekutta(particle, grid, time, settings):
     chi_x = np.zeros((particle.nparts,4))
     chi_y = np.zeros((particle.nparts,4))
 
-    for ns in range(0,MSTAGE):
-        xpt  = lag['xl']  + (a_rk[ns]*lag['timestep'])*chix[:,ns]
-        ypt  = lag['yl']  + (a_rk[ns]*lag['timestep'])*chiy[:,ns]
+    for i in xrange(0, M_STAGE):
+        xpt  = lag['xl']  + (A[i]*lag['timestep'])*chix[:,i]
+        ypt  = lag['yl']  + (A[i]*lag['timestep'])*chiy[:,i]
 
         uin  = ((1-c_rk[ns])*grid['ustep1'] + c_rk[ns]*grid['ustep2'])
         vin  = ((1-c_rk[ns])*grid['vstep1'] + c_rk[ns]*grid['ustep2'])
